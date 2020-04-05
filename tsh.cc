@@ -2,6 +2,7 @@
 // tsh - A tiny shell program with job control
 // 
 // <Put your name and login ID here>
+// Emma King - emk0195
 //
 
 using namespace std;
@@ -33,6 +34,8 @@ int verbose = 0;
 // waitfg, sigchld_handler, sigstp_handler, sigint_handler
 //
 // 1.) Amit said to start with builtin_cmd cause it's the easiest to begin
+// 2.) do eval next so we can check the cmds input (ex. quit)
+
 // The code below provides the "prototypes" for those functions
 // so that earlier code can refer to them. You need to fill in the
 // function bodies below.
@@ -127,7 +130,7 @@ int main(int argc, char *argv[])
     //
     // Evaluate command line
     //
-    eval(cmdline);
+    eval(cmdline); //calling the eval function - important to get it done!
     fflush(stdout);
     fflush(stdout);
   } 
@@ -147,6 +150,7 @@ int main(int argc, char *argv[])
 // background children don't receive SIGINT (SIGTSTP) from the kernel
 // when we type ctrl-c (ctrl-z) at the keyboard.
 //
+//about 70 lines
 void eval(char *cmdline) 
 {
   /* Parse command line */
@@ -156,16 +160,36 @@ void eval(char *cmdline)
   // for the execve() routine, which you'll need to
   // use below to launch a process.
   //
-  char *argv[MAXARGS];
+    //we will do different things depending on if it's an actual command or if it's a built_in command
+    // if it's not built_in, we should fork an exact child process
+    // if it's built_in then we will try to carry out command without a child process
+//   char *argv[MAXARGS]; //create the array of pointers that we will pass to parseline
+//   char buf[MAXBUF]; //pg 754
+//   pid_t pid; //Each process has a unique positive (nonzero) process ID (PID) pg 719 - get the process ID
+//   sigset_t mask; //pg 757
+    
+    
 
   //
   // The 'bg' variable is TRUE if the job should run
   // in background mode or FALSE if it should run in FG
   //
+  char *argv[MAXARGS]; //create the array of pointers that we will pass to parseline - MAXARGS defined above
   int bg = parseline(cmdline, argv); 
+     if (!builtin_cmd(argv)) //if it is not a built in command
+    {
+        //forking and execing a child process
+         if (fork() == 0)
+         {
+             //equals zero so we are now within the child process
+             execv(argv[0], argv); //exec variant, first thing we give to it is the path to the command - rest of cmd passed in subsequently as an  argument vector
+             
+         }
+    }
   if (argv[0] == NULL)  
+  {
     return;   /* ignore empty lines */
-
+  }
   return;
 }
 
@@ -186,7 +210,7 @@ int builtin_cmd(char **argv)
   string cmd(argv[0]);
   
     //user inputs simple command now we need to write up what will happen in shell
-  if (cmd == "quit") //the command to quit shell
+  if (cmd == "quit") //the command to quit shell - for quit to work we need to implement eval
   {
      exit(0);  //indicates successful program termination - exit(1) is unsuccessful
   }
