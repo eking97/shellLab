@@ -166,7 +166,7 @@ void eval(char *cmdline)
 //   char *argv[MAXARGS]; //create the array of pointers that we will pass to parseline
 //   char buf[MAXBUF]; //pg 754
 //   pid_t pid; //Each process has a unique positive (nonzero) process ID (PID) pg 719 - get the process ID
-//   sigset_t mask; //pg 757
+//pg 757
     
     
 
@@ -174,17 +174,40 @@ void eval(char *cmdline)
   // The 'bg' variable is TRUE if the job should run
   // in background mode or FALSE if it should run in FG
   //
+  pid_t pid; //comes from jobs.h - job process ID
   char *argv[MAXARGS]; //create the array of pointers that we will pass to parseline - MAXARGS defined above
   int bg = parseline(cmdline, argv); 
+  struct job_t *job;
      if (!builtin_cmd(argv)) //if it is not a built in command
     {
         //forking and execing a child process
-         if (fork() == 0)
+         if ((pid = fork()) == 0)
          {
              //equals zero so we are now within the child process
-             execv(argv[0], argv); //exec variant, first thing we give to it is the path to the command - rest of cmd passed in subsequently as an  argument vector
-             
+             if (execvp(argv[0], argv) < 0) //exec fails
+             {
+                 printf("%s: Command not found\n", argv[0]); //exec shouldn't return unless something went wrong
+                 exit(0); //keeps child from forking itself into another child process when an unknown command is input into terminal
+             }
+//execvp(argv[0], argv); //exec variant, first thing we give to it is the path to the command -rest of cmd passed in subsequently as an  argument vector - p means it's gonna look things up in its path
+             //printf("forked child");
          }
+         addjob(jobs, pid, bg ? BG : FG, cmdline); //if bg is true do background, otherwise do foreground
+         if (!bg) //if in the parent process - foreground
+        {
+             //printf("foreground");
+            //parent process wait for the child process and also reap it at the same time
+            //wait(NULL); //don't care about the return value of the child process
+            waitfg(pid);
+        }
+        if (bg)
+        {
+            //printf("background");
+            //it is a background job
+            //print a status message like tshref
+            job = getjobpid(jobs, pid); //call from jobs.h
+            printf("[%d] (%d) %s", job->jid, job->pid, cmdline);
+        }
     }
   if (argv[0] == NULL)  
   {
@@ -281,6 +304,15 @@ void do_bgfg(char **argv)
 //
 void waitfg(pid_t pid)
 {
+//     struct job_t *job = getjobpid(jobs, pid);
+//     while (job->state == FG) //if jobs state is equal to its foreground state
+//     {
+//         sleep(1);
+//     }
+    while(pid == fgpid(jobs))
+    {
+        sleep(1);
+    }
   return;
 }
 
@@ -300,6 +332,15 @@ void waitfg(pid_t pid)
 //
 void sigchld_handler(int sig) 
 {
+    pid_t pid;
+    int status; //staus of the job
+//     struct job_t *job;
+    while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0)
+    {
+//         job = getjobpid(jobs, pid);
+        deletejob(jobs, pid); //reaping the child
+    }
+    
   return;
 }
 
