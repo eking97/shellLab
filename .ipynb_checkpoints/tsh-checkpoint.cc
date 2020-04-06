@@ -2,7 +2,7 @@
 // tsh - A tiny shell program with job control
 // 
 // <Put your name and login ID here>
-// Emma King - emk0195
+// Emma King - emki0195 - eking97
 //
 
 using namespace std;
@@ -35,6 +35,7 @@ int verbose = 0;
 //
 // 1.) Amit said to start with builtin_cmd cause it's the easiest to begin
 // 2.) do eval next so we can check the cmds input (ex. quit)
+// - while working on eval also implement waitfg and signal handlers
 
 // The code below provides the "prototypes" for those functions
 // so that earlier code can refer to them. You need to fill in the
@@ -163,13 +164,8 @@ void eval(char *cmdline)
     //we will do different things depending on if it's an actual command or if it's a built_in command
     // if it's not built_in, we should fork an exact child process
     // if it's built_in then we will try to carry out command without a child process
-//   char *argv[MAXARGS]; //create the array of pointers that we will pass to parseline
-//   char buf[MAXBUF]; //pg 754
-//   pid_t pid; //Each process has a unique positive (nonzero) process ID (PID) pg 719 - get the process ID
-//pg 757
     
     
-
   //
   // The 'bg' variable is TRUE if the job should run
   // in background mode or FALSE if it should run in FG
@@ -181,9 +177,9 @@ void eval(char *cmdline)
      if (!builtin_cmd(argv)) //if it is not a built in command
     {
         //forking and execing a child process
-         if ((pid = fork()) == 0)
+         if ((pid = fork()) == 0) //equals zero so we are now within the child process
          {
-             //equals zero so we are now within the child process
+             setpgid(0, 0); //The setpgid function changes the process group of process pid to pgid
              if (execvp(argv[0], argv) < 0) //exec fails
              {
                  printf("%s: Command not found\n", argv[0]); //exec shouldn't return unless something went wrong
@@ -206,7 +202,7 @@ void eval(char *cmdline)
             //it is a background job
             //print a status message like tshref
             job = getjobpid(jobs, pid); //call from jobs.h
-            printf("[%d] (%d) %s", job->jid, job->pid, cmdline);
+            printf("[%d] (%d) %s", job->jid, job->pid, cmdline); //could use given job functions but this is easier
         }
     }
   if (argv[0] == NULL)  
@@ -301,15 +297,15 @@ void do_bgfg(char **argv)
 /////////////////////////////////////////////////////////////////////////////
 //
 // waitfg - Block until process pid is no longer the foreground process
-//
+// In waitfg, use a busy loop around the sleep function.
 void waitfg(pid_t pid)
 {
 //     struct job_t *job = getjobpid(jobs, pid);
 //     while (job->state == FG) //if jobs state is equal to its foreground state
 //     {
 //         sleep(1);
-//     }
-    while(pid == fgpid(jobs))
+//     } // alternate way to do this
+    while(pid == fgpid(jobs)) //waits until the current job is not longer the foreground state
     {
         sleep(1);
     }
@@ -330,14 +326,22 @@ void waitfg(pid_t pid)
 //     available zombie children, but doesn't wait for any other
 //     currently running children to terminate.  
 //
+//In sigchld handler, use exactly one call to waitpid.
+//The WUNTRACED and WNOHANG options to waitpid will also be useful.
+// 80 lines
 void sigchld_handler(int sig) 
 {
     pid_t pid;
     int status; //staus of the job
-//     struct job_t *job;
     while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0)
     {
-//         job = getjobpid(jobs, pid);
+        if (WIFSIGNALED(status)) //originally had this in sigint_handler, but was getting different signal values so moved here
+            //WIFSIGNALED(status): Returns true if the child process terminated because of a signal that was not caught - pg 725
+         { //this is for trace06 and trace07
+              printf("Job [%d] (%d) terminated by signal %d\n", pid2jid(pid), pid, WTERMSIG(status));
+              deletejob(jobs,pid);
+            return;
+         }
         deletejob(jobs, pid); //reaping the child
     }
     
@@ -349,9 +353,18 @@ void sigchld_handler(int sig)
 // sigint_handler - The kernel sends a SIGINT to the shell whenver the
 //    user types ctrl-c at the keyboard.  Catch it and send it along
 //    to the foreground job.  
-//
+// 15 lines
 void sigint_handler(int sig) 
 {
+    //gonna have to use the kill function - pg 739-740
+    pid_t pid;
+    pid = fgpid(jobs); //gets the pid of the job running in the foreground
+    
+     //If pid is zero, the PID of the current process is used
+    if (pid != 0)
+    {
+       kill(-(pid), SIGINT);
+    }
   return;
 }
 
@@ -360,7 +373,7 @@ void sigint_handler(int sig)
 // sigtstp_handler - The kernel sends a SIGTSTP to the shell whenever
 //     the user types ctrl-z at the keyboard. Catch it and suspend the
 //     foreground job by sending it a SIGTSTP.  
-//
+// 15 lines
 void sigtstp_handler(int sig) 
 {
   return;
