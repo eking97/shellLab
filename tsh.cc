@@ -342,6 +342,15 @@ void sigchld_handler(int sig)
               deletejob(jobs,pid);
             return;
          }
+        
+        if (WIFSTOPPED(status))
+        //WIFSTOPPED(status): Returns true if the child that caused the return is currently stopped
+        {
+            getjobpid(jobs, pid)->state = ST;
+            printf("Job [%d] (%d) stopped by signal %d\n", pid2jid(pid), pid, WSTOPSIG(status));
+            //if deletejob() is placed here doesn't pass trace08
+            return;
+        }
         deletejob(jobs, pid); //reaping the child
     }
     
@@ -356,14 +365,15 @@ void sigchld_handler(int sig)
 // 15 lines
 void sigint_handler(int sig) 
 {
+    //When you implement your signal handlers, be sure to send SIGINT and SIGTSTP signals to the entire foreground process group, using ”-pid” instead     //of ”pid” in the argument to the kill function
     //gonna have to use the kill function - pg 739-740
     pid_t pid;
     pid = fgpid(jobs); //gets the pid of the job running in the foreground
-    
+    //printf("HANDLER");
      //If pid is zero, the PID of the current process is used
     if (pid != 0)
     {
-       kill(-(pid), SIGINT);
+       kill(-(pid), SIGINT); //kill entire foreground process group
     }
   return;
 }
@@ -376,6 +386,16 @@ void sigint_handler(int sig)
 // 15 lines
 void sigtstp_handler(int sig) 
 {
+    //typing crtl-z sends a SIGTSTP signal to the shell, which catches it and sends a SIGTSTP signal to every process in the foreground process group.     //In the default case, the result is to stop (suspend) the foreground job - pg 741
+    //stop signal from terminal 
+    
+    pid_t pid;
+    pid = fgpid(jobs);
+    
+    if (pid != 0)
+    {
+        kill(-(pid), SIGTSTP); //kill entire foreground process group
+    }
   return;
 }
 
