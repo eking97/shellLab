@@ -174,12 +174,13 @@ void eval(char *cmdline)
   char *argv[MAXARGS]; //create the array of pointers that we will pass to parseline - MAXARGS defined above
   int bg = parseline(cmdline, argv); 
   struct job_t *job;
+  
      if (!builtin_cmd(argv)) //if it is not a built in command
     {
         //forking and execing a child process
          if ((pid = fork()) == 0) //equals zero so we are now within the child process
          {
-             setpgid(0, 0); //The setpgid function changes the process group of process pid to pgid
+             setpgid(0, 0); //The setpgid function changes the process group of process pid to pgid - in write-up
              if (execvp(argv[0], argv) < 0) //exec fails
              {
                  printf("%s: Command not found\n", argv[0]); //exec shouldn't return unless something went wrong
@@ -191,14 +192,14 @@ void eval(char *cmdline)
          addjob(jobs, pid, bg ? BG : FG, cmdline); //if bg is true do background, otherwise do foreground
          if (!bg) //if in the parent process - foreground
         {
-             //printf("foreground");
+//              printf("foreground");
             //parent process wait for the child process and also reap it at the same time
             //wait(NULL); //don't care about the return value of the child process
             waitfg(pid);
         }
         if (bg)
         {
-            //printf("background");
+//             printf("background");
             //it is a background job
             //print a status message like tshref
             job = getjobpid(jobs, pid); //call from jobs.h
@@ -249,7 +250,7 @@ int builtin_cmd(char **argv)
 /////////////////////////////////////////////////////////////////////////////
 //
 // do_bgfg - Execute the builtin bg and fg commands
-//
+//start this for trace09
 void do_bgfg(char **argv) 
 {
   struct job_t *jobp=NULL;
@@ -290,6 +291,20 @@ void do_bgfg(char **argv)
   // your benefit.
   //
   string cmd(argv[0]);
+  //this is if the user manually inputs "bg" or "fg"
+    if (cmd == "bg") //want to run background process
+    {
+        jobp->state = BG; //have to change the job's state
+        printf("[%d] (%d) %s", jobp->jid, jobp->pid, jobp->cmdline); //print same message as eval function if (bg)
+        //jid, pid, and cmdline are all variables that can be accessed in a job_t struct
+    }
+    if (cmd == "fg")//will utilize the waitfg() b/c running in the foreground
+    {
+        //The fg <job> built-in command restarts <job> by sending it a SIGCONT signal, and then runs it in the foreground
+        kill(-(jobp->pid), SIGCONT); //The process stops until restarted by a SIGCONT signal
+        jobp->state = FG;
+        waitfg(jobp->pid); //wait for job to finish, takes a pid
+    }
 
   return;
 }
@@ -338,6 +353,7 @@ void sigchld_handler(int sig)
         if (WIFSIGNALED(status)) //originally had this in sigint_handler, but was getting different signal values so moved here
             //WIFSIGNALED(status): Returns true if the child process terminated because of a signal that was not caught - pg 725
          { //this is for trace06 and trace07
+              //printf("CHILD HANDLER - different signal");
               printf("Job [%d] (%d) terminated by signal %d\n", pid2jid(pid), pid, WTERMSIG(status));
               deletejob(jobs,pid);
             return;
@@ -346,12 +362,19 @@ void sigchld_handler(int sig)
         if (WIFSTOPPED(status))
         //WIFSTOPPED(status): Returns true if the child that caused the return is currently stopped
         {
+            //printf("CHILD HANDLER - currently stopped");
             getjobpid(jobs, pid)->state = ST;
             printf("Job [%d] (%d) stopped by signal %d\n", pid2jid(pid), pid, WSTOPSIG(status));
             //if deletejob() is placed here doesn't pass trace08
             return;
         }
-        deletejob(jobs, pid); //reaping the child
+        if (WIFEXITED(status)) 
+        {   
+            //printf("CHILD HANDLER - normal termination");
+            deletejob(jobs, pid);
+            return;
+        }
+        //deletejob(jobs, pid); //reaping the child
     }
     
   return;
